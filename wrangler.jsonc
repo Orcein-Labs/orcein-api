@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "orcein-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-10-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "96d8d9104670189a0b596183f39e5134",
+  "routes": [
+    {
+      "pattern": "api.orceinlabs.com",
+      "custom_domain": true
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "ORCEIN_KEYS",
+      "id": "acd4736d6ebd43569a1e29d1215949e1"
+    },
+    {
+      "binding": "ORCEIN_CACHE",
+      "id": "97398b2d0ff44b3a8bb06c98626b7fd6"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}
