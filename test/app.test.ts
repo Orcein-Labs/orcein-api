@@ -4,11 +4,24 @@ import { verifyStripeSignature } from "../src/billing/stripe";
 
 describe("Orcein Edge API Router Integration", () => {
   it("GET / returns service manifest and endpoints", async () => {
-    const res = await app.request("/");
+    const res = await app.request("https://api.orceinlabs.com/", {
+      headers: { Accept: "application/json" }
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as any;
     expect(body.service).toBe("Orcein Labs Core Edge API");
     expect(body.endpoints.digest).toBeDefined();
+  });
+
+  it("GET / returns landing page HTML when requested via browser or site host", async () => {
+    const res = await app.request("https://orceinlabs.com/", {
+      headers: { Accept: "text/html" }
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Orcein Labs");
+    expect(html).toContain("Context Digest API");
+    expect(html).toContain("contact@orceinlabs.com");
   });
 
   it("GET /health returns healthy status", async () => {

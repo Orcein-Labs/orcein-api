@@ -9,6 +9,14 @@
     {
       "pattern": "api.orceinlabs.com",
       "custom_domain": true
+    },
+    {
+      "pattern": "orceinlabs.com/*",
+      "zone_name": "orceinlabs.com"
+    },
+    {
+      "pattern": "www.orceinlabs.com/*",
+      "zone_name": "orceinlabs.com"
     }
   ],
   "kv_namespaces": [

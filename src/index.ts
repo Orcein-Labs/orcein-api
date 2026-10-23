@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { extractMarkdown, type DigestOptions } from "./digest/extractor";
 import { authenticateRequest } from "./auth/keys";
 import { handleStripeWebhook } from "./billing/stripe";
+import { getLandingPageHtml } from "./site/landing";
 
 export interface Env {
   ORCEIN_KEYS: KVNamespace;
@@ -27,13 +28,22 @@ app.use(
   })
 );
 
-// Health & Discovery
+// Health & Discovery & Landing Page
 app.get("/", (c) => {
+  const url = new URL(c.req.url);
+  const accept = c.req.header("Accept") || "";
+  const isSiteHost = url.hostname === "orceinlabs.com" || url.hostname === "www.orceinlabs.com";
+
+  if (isSiteHost || accept.includes("text/html")) {
+    return c.html(getLandingPageHtml());
+  }
+
   return c.json({
     service: "Orcein Labs Core Edge API",
     organization: "Orcein Labs",
     version: "1.0.0",
     docs: "https://github.com/Orcein-Labs/orcein-api",
+    site: "https://orceinlabs.com",
     endpoints: {
       digest: {
         method: "GET | POST",
@@ -52,6 +62,10 @@ app.get("/", (c) => {
     }
   });
 });
+
+app.get("/terms", (c) => c.html(getLandingPageHtml()));
+app.get("/privacy", (c) => c.html(getLandingPageHtml()));
+app.get("/refunds", (c) => c.html(getLandingPageHtml()));
 
 app.get("/health", (c) => c.json({ status: "healthy", timestamp: Date.now() }));
 
