@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import app from "../src/index";
+import { verifyStripeSignature } from "../src/billing/stripe";
 
 describe("Orcein Edge API Router Integration", () => {
   it("GET / returns service manifest and endpoints", async () => {
@@ -88,5 +89,40 @@ end
     expect(body.email).toBe("founder@example.com");
     expect(body.tier).toBe("starter");
     expect(body.apiKey).toMatch(/^orcein_live_[0-9a-f]{48}$/);
+  });
+
+  it("verifies Stripe cryptographic webhook signatures and blocks spoofing", async () => {
+    const secret = "whsec_test_secret_key";
+    const rawBody = JSON.stringify({ test: "data" });
+    const timestamp = Math.floor(Date.now() / 1000);
+    const payload = `${timestamp}.${rawBody}`;
+    
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const sigBytes = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+    const validSigHex = Array.from(new Uint8Array(sigBytes))
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    const validHeader = `t=${timestamp},v1=${validSigHex}`;
+    const isValid = await verifyStripeSignature(rawBody, validHeader, secret);
+    expect(isValid).toBe(true);
+
+    // Spoofed signature
+    const invalidHeader = `t=${timestamp},v1=deadbeef1234567890`;
+    const isInvalid = await verifyStripeSignature(rawBody, invalidHeader, secret);
+    expect(isInvalid).toBe(false);
+
+    // Replay attack (> 300s old)
+    const oldTimestamp = timestamp - 400;
+    const oldHeader = `t=${oldTimestamp},v1=${validSigHex}`;
+    const isReplay = await verifyStripeSignature(rawBody, oldHeader, secret);
+    expect(isReplay).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 /**
  * Orcein Stripe Webhook & Automated Key Provisioning Handler
+ * Native Web Crypto HMAC-SHA256 verification (zero runtime dependencies)
  */
 
 import { generateApiKey, type KeyRecord } from "../auth/keys";
@@ -7,6 +8,53 @@ import { generateApiKey, type KeyRecord } from "../auth/keys";
 export interface StripeWebhookEnv {
   ORCEIN_KEYS?: KVNamespace;
   STRIPE_WEBHOOK_SECRET?: string;
+}
+
+/**
+ * Verify Stripe cryptographic webhook signature using native Web Crypto
+ */
+export async function verifyStripeSignature(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string
+): Promise<boolean> {
+  if (!signatureHeader || !secret) return false;
+
+  const parts = signatureHeader.split(",");
+  let timestamp = "";
+  let sig = "";
+
+  for (const part of parts) {
+    const [k, v] = part.split("=");
+    if (k?.trim() === "t") timestamp = v?.trim() || "";
+    if (k?.trim() === "v1") sig = v?.trim() || "";
+  }
+
+  if (!timestamp || !sig) return false;
+
+  // Protect against replay attacks (within 5 minutes = 300s tolerance)
+  const now = Math.floor(Date.now() / 1000);
+  const tsNum = parseInt(timestamp, 10);
+  if (isNaN(tsNum) || Math.abs(now - tsNum) > 300) {
+    return false;
+  }
+
+  const payload = `${timestamp}.${rawBody}`;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signatureBytes = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  const expectedSig = Array.from(new Uint8Array(signatureBytes))
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  return expectedSig === sig;
 }
 
 export async function handleStripeWebhook(
@@ -17,9 +65,22 @@ export async function handleStripeWebhook(
     return new Response("Method not allowed", { status: 405 });
   }
 
+  const rawBody = await request.text();
+
+  // If webhook signing secret is configured, enforce cryptographic signature verification
+  if (env?.STRIPE_WEBHOOK_SECRET) {
+    const sigHeader = request.headers.get("Stripe-Signature");
+    const isValid = await verifyStripeSignature(rawBody, sigHeader, env.STRIPE_WEBHOOK_SECRET);
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: "Invalid Stripe webhook signature" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  }
+
   let event: any;
   try {
-    const rawBody = await request.text();
     event = JSON.parse(rawBody);
   } catch (err: any) {
     return new Response(`Webhook JSON error: ${err.message}`, { status: 400 });
